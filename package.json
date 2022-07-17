@@ -1,0 +1,17 @@
+{
+  "name": "csv-json-import-profiler",
+  "version": "0.0.0",
+  "description": "Profile CSV and JSON imports for shape drift, nulls, encoding and row limits.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/edilec/csv-json-import-profiler"
+  }
+}
