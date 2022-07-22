@@ -1,0 +1,3 @@
+{"event_id": 1, "kind": "import.started", "at": "2026-01-04T09:00:00Z", "rows": 1200}
+{"event_id": 2, "kind": "import.row_rejected", "at": "2026-01-04T09:00:03Z", "rows": 1}
+{"event_id": 3, "kind": "import.finished", "at": "2026-01-04T09:01:11Z", "rows": 1199}

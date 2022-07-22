@@ -1,0 +1,6 @@
+order_id,placed_on,customer_ref,quantity,unit_price,notes,customer_ref
+2001,2026-02-02,ACME-0001,2,10.50,"Left by the door",ACME-0001
+2002,2026-02-02,ACME-0002, 1,unpriced,"Price to follow",ACME-0002
+2003,2026-02-03,BOLT-0117,007,1.25,Split by an unescaped comma,extra,BOLT-0117
+2004,2026-02-03,,012,7.80,,
+2005,2026-02-04,CRAN-0042,1,99.99,"Fine",CRAN-0042
