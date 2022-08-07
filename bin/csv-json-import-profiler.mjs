@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { access, realpath, writeFile } from 'node:fs/promises'
+import { realpath, writeFile } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
 
 import { formatReport, profileFile } from '../src/index.mjs'
@@ -167,14 +167,17 @@ function parseArguments(argv) {
 async function resolveOutput(outPath, inputPath, overwrite) {
   const target = resolve(outPath)
   const inputReal = await realpath(resolve(inputPath)).catch(() => null)
+  // An existing target is compared by its own real path, so a symlink pointing
+  // at the input is caught; one that does not exist yet is composed from its
+  // real directory, because there is nothing to resolve.
+  const existingReal = await realpath(target).catch(() => null)
   const directory = await realpath(dirname(target)).catch(() => null)
   if (directory === null) throw new Error(`--out directory does not exist: ${dirname(outPath)}`)
-  const targetReal = join(directory, basename(target))
+  const targetReal = existingReal ?? join(directory, basename(target))
   if (inputReal !== null && targetReal === inputReal) {
     throw new Error('--out must not be the input file; this tool never rewrites what it profiles')
   }
-  const exists = await access(targetReal).then(() => true, () => false)
-  if (exists && !overwrite) {
+  if (existingReal !== null && !overwrite) {
     throw new Error(`--out already exists: ${outPath} (pass --overwrite to replace it)`)
   }
   return targetReal
