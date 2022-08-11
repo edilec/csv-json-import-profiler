@@ -45,9 +45,10 @@ export const REPORT_SCHEMA_VERSION = '1'
  * Exceeding one produces an `incomplete` report -- never a quietly shorter
  * answer, and never a pass.
  *
- * `maxMillis` is the one limit that may be zero: a zero budget is exhausted
- * before the first record, which is how the wiring between the CLI flag and the
- * clock is proven rather than assumed.
+ * `maxMillis` is the one limit that may be zero. The budget is spent once the
+ * elapsed time reaches it, so zero is spent before the first record -- which is
+ * how the wiring between the CLI flag and the clock is proven rather than
+ * assumed.
  */
 export const DEFAULT_LIMITS = Object.freeze({
   maxColumns: 256,
@@ -159,7 +160,9 @@ export function validateNullTokens(tokens = []) {
   for (const token of tokens) {
     if (typeof token !== 'string') throw new TypeError('Null tokens must be an array of strings')
     if (token !== sanitize(token)) throw new TypeError('A null token must not contain control characters')
-    if (token.includes('�')) throw new TypeError('A null token arrived as U+FFFD, so it was not the token you typed')
+    if (token.includes('\uFFFD')) {
+      throw new TypeError('A null token arrived as U+FFFD, so it was not the token you typed')
+    }
   }
   return Object.freeze([...tokens])
 }
@@ -248,8 +251,14 @@ async function profileSource(source, settings) {
   let head = null
   let failed = false
 
+  /**
+   * The time budget is spent once the elapsed time reaches it, not once it
+   * passes it, which is what makes a budget of zero mean zero. Nothing about
+   * the elapsed time reaches the report: a clock can only end the run early,
+   * and that is a finding of its own.
+   */
   const outOfTime = () => {
-    if (clock() - started <= limits.maxMillis) return false
+    if (clock() - started < limits.maxMillis) return false
     profiler.stop(
       'time-limit-exceeded',
       `Profiling passed the maxMillis limit of ${limits.maxMillis} after ${profiler.counts.records} record(s). The rest of the input was not read.`,
