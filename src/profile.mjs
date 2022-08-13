@@ -226,11 +226,19 @@ export class Profiler {
     this.stopped = true
   }
 
+  /**
+   * The column a value belongs to.
+   *
+   * CSV columns are keyed by position as well as name, because a header that
+   * repeats a name has two columns and they are not the same column. JSON
+   * columns are keyed by name alone, because a field is the same field wherever
+   * in the record it appears.
+   */
   column(name, index) {
-    const key = `${index}:${name}`
+    const key = index === undefined ? `json:${name}` : `csv:${index}:${name}`
     const existing = this.columnByName.get(key)
     if (existing !== undefined) return existing
-    const created = createColumn(name, index)
+    const created = createColumn(name, index ?? this.columns.length)
     this.columns.push(created)
     this.columnByName.set(key, created)
     return created
@@ -431,19 +439,9 @@ export class Profiler {
 
     this.counts.profiled += 1
     for (const key of keys) {
-      const column = this.jsonColumn(key)
+      const column = this.column(key)
       this.observe(column, classifyJsonValue(value[key]), valueText(value[key]), ordinal)
     }
-  }
-
-  /** JSON columns are keyed by name: a field is the same field wherever it appears. */
-  jsonColumn(name) {
-    for (const column of this.columns) {
-      if (column.name === name) return column
-    }
-    const created = createColumn(name, this.columns.length)
-    this.columns.push(created)
-    return created
   }
 
   noteKeyDrift(keys, ordinal, line) {

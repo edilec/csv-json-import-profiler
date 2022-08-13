@@ -252,6 +252,27 @@ async function profileSource(source, settings) {
   let failed = false
 
   /**
+   * Decode strictly, or end the run saying the bytes were refused.
+   *
+   * The decoder's own failure is caught here rather than in the outer handler,
+   * so that a `TypeError` thrown by a bug in this tool cannot be reported as
+   * "your file is not UTF-8". A run must not explain its own defects as a
+   * property of the input.
+   */
+  const decode = (chunk, final = false) => {
+    try {
+      return final ? decoder.end() : decoder.push(chunk)
+    } catch {
+      profiler.stop(
+        'input-not-utf8',
+        `The input is not valid UTF-8 within the first ${bytes} byte(s), so it was refused by the decoder rather than guessed at. Nothing after the offending byte was read.`,
+        { suggestion: 'Re-export as UTF-8. A profile of mis-decoded bytes would describe a file nobody has.' },
+      )
+      return null
+    }
+  }
+
+  /**
    * The time budget is spent once the elapsed time reaches it, not once it
    * passes it, which is what makes a budget of zero mean zero. Nothing about
    * the elapsed time reaches the report: a clock can only end the run early,
@@ -308,35 +329,38 @@ async function profileSource(source, settings) {
             { suggestion: 'Export without a BOM, or strip it before importing.' },
           )
         }
-        handle(reader.push(decoder.push(head)))
+        const decoded = decode(head)
         head = null
+        if (decoded === null) break
+        handle(reader.push(decoded))
         continue
       }
-      handle(reader.push(decoder.push(chunk)))
+      const decoded = decode(chunk)
+      if (decoded === null) break
+      handle(reader.push(decoded))
       if (outOfTime()) break
     }
 
     if (!profiler.stopped && !sniffed) {
       // A file shorter than a byte order mark still has to be read.
       sniffed = true
-      if (head !== null) handle(reader.push(decoder.push(head)))
+      if (head !== null) {
+        const decoded = decode(head)
+        if (decoded !== null) handle(reader.push(decoded))
+      }
     }
 
-    if (!profiler.stopped) handle(reader.push(decoder.end()))
+    if (!profiler.stopped) {
+      // The flush is where a file that stops mid-character is caught.
+      const decoded = decode(null, true)
+      if (decoded !== null) handle(reader.push(decoded))
+    }
   } catch (error) {
     failed = true
     profiler.incomplete = true
-    if (error instanceof TypeError) {
-      profiler.noteInput(
-        'input-not-utf8',
-        'The input is not valid UTF-8, so it was refused by the decoder rather than guessed at. Nothing after the offending byte was read.',
-        { suggestion: 'Re-export as UTF-8. A profile of mis-decoded bytes would describe a file nobody has.' },
-      )
-    } else {
-      profiler.noteInput('input-unreadable', `The input could not be read: ${error.code ?? error.message}`, {
-        suggestion: 'Check the path and its permissions.',
-      })
-    }
+    profiler.noteInput('input-unreadable', `The input could not be read: ${error.code ?? error.message}`, {
+      suggestion: 'Check the path and its permissions.',
+    })
   }
 
   if (!failed && !profiler.stopped) {

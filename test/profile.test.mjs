@@ -208,6 +208,19 @@ test('a decoding failure part-way through a file is incomplete even though earli
   })
 })
 
+test('a file that stops in the middle of a character is refused at the flush', async () => {
+  // The lead byte of a two-byte sequence with nothing after it. A streaming
+  // decoder cannot complain until the end of the stream, which is exactly why
+  // the final flush is not optional: without it the file would look complete
+  // and one truncated character would vanish.
+  const bytes = new Uint8Array([...new TextEncoder().encode('id\n1\n'), 0xc3])
+  const report = await profileBytes(bytes, { file: 'input.csv', format: 'csv' })
+
+  assert.equal(report.summary.checked, 1, 'the records before the truncation were profiled')
+  assert.equal(report.status, 'incomplete')
+  assert.equal(ruleIds(report).includes('input-not-utf8'), true)
+})
+
 test('a literal replacement character in a valid file is not mistaken for a decoding failure', async () => {
   // The defect this guards: inferring "not UTF-8" from U+FFFD in decoded text
   // cannot tell a broken file from a file that legitimately contains that
