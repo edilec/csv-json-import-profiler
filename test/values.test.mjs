@@ -79,6 +79,7 @@ test('ISO dates are validated against the calendar, not against a regular expres
 
 test('integers outside the exact range of a double are detected before they are parsed', () => {
   assert.equal(isUnsafeInteger('9007199254740993'), true)
+  assert.equal(isUnsafeInteger('+9007199254740993'), true, 'a leading plus is still an integer literal')
   assert.equal(isUnsafeInteger('-9007199254740993'), true)
   assert.equal(isUnsafeInteger('9007199254740991'), false)
   assert.equal(isUnsafeInteger('42'), false)

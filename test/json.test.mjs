@@ -111,6 +111,19 @@ test('JSON.parse cannot answer the duplicate-key question, which is why the scan
   assert.equal(inspectJsonText(text).duplicates.length, 1)
 })
 
+test('the scan survives malformed text, because JSON.parse is the authority on validity', () => {
+  // The scanner answers two questions JSON.parse cannot. It is not a second
+  // validator, so on text that is not JSON it must return rather than throw or
+  // loop, and let the parse produce the real diagnosis.
+  assert.deepEqual(inspectJsonText('{"a":"unterminated').duplicates, [])
+  assert.deepEqual(inspectJsonText('{"a":1,').duplicates, [])
+  assert.deepEqual(inspectJsonText('').duplicates, [])
+  assert.equal(inspectJsonText('{"a":"esc\\').depth, 1)
+  // A key whose escape sequence is not valid JSON is reported by its raw
+  // text rather than dropped: the duplicate is still a duplicate.
+  assert.deepEqual(inspectJsonText('{"a\\xb":1,"a\\xb":2}').duplicates, [{ key: 'a\\xb', pointer: '/a\\xb' }])
+})
+
 test('nesting depth is counted, and a scalar record is depth one', () => {
   assert.equal(inspectJsonText('{"a":{"b":[{"c":1}]}}').depth, 4)
   assert.equal(inspectJsonText('{}').depth, 1)

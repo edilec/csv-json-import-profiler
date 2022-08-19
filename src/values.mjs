@@ -99,12 +99,8 @@ export function hasLeadingZeros(text) {
  */
 export function isUnsafeInteger(text) {
   if (!INTEGER_PATTERN.test(text)) return false
-  try {
-    const value = BigInt(text)
-    return value > BigInt(Number.MAX_SAFE_INTEGER) || value < -BigInt(Number.MAX_SAFE_INTEGER)
-  } catch {
-    return false
-  }
+  const value = BigInt(text)
+  return value > BigInt(Number.MAX_SAFE_INTEGER) || value < -BigInt(Number.MAX_SAFE_INTEGER)
 }
 
 /** Whether a value carries leading or trailing whitespace an importer may keep. */

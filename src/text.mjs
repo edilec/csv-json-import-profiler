@@ -124,15 +124,6 @@ export function createUtf8Decoder() {
   }
 }
 
-/** Decode a complete byte sequence strictly. */
-export function decodeUtf8(bytes) {
-  try {
-    return { ok: true, text: new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(bytes) }
-  } catch {
-    return { ok: false, reason: 'not-utf8' }
-  }
-}
-
 /** Whether a byte sequence opens with the UTF-8 byte order mark. */
 export function hasBom(bytes) {
   return bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf

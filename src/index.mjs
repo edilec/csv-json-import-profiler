@@ -476,7 +476,28 @@ export async function profileFile(options = {}) {
   if (typeof options.input !== 'string' || options.input.trim() === '') {
     throw new TypeError('An input path is required')
   }
+  if (options.root !== undefined && (typeof options.root !== 'string' || options.root.trim() === '')) {
+    throw new TypeError('Root must be a non-empty string')
+  }
   const settings = prepare(options, FILE_OPTIONS, options.input)
+
+  /**
+   * The root is resolved before the input.
+   *
+   * A root that cannot be read is a configuration error whatever the input
+   * turns out to be, and a configuration error is a run that never had a
+   * subject. Resolving the input first would let a missing input turn a
+   * misspelled root into an ordinary incomplete report, which is the quieter
+   * and more misleading of the two answers.
+   */
+  let rootReal = null
+  if (options.root !== undefined) {
+    try {
+      rootReal = await realpath(resolve(options.root))
+    } catch (error) {
+      throw new TypeError(`Root could not be read: ${error.code ?? 'unknown error'}`)
+    }
+  }
 
   let inputReal
   try {
@@ -484,19 +505,7 @@ export async function profileFile(options = {}) {
   } catch (error) {
     return unreadable(excerpt(basename(options.input), 200), settings, `the path could not be resolved (${error.code ?? 'unknown error'})`)
   }
-
-  let rootReal
-  if (options.root === undefined) rootReal = dirname(inputReal)
-  else {
-    if (typeof options.root !== 'string' || options.root.trim() === '') {
-      throw new TypeError('Root must be a non-empty string')
-    }
-    try {
-      rootReal = await realpath(resolve(options.root))
-    } catch (error) {
-      throw new TypeError(`Root could not be read: ${error.code ?? 'unknown error'}`)
-    }
-  }
+  if (rootReal === null) rootReal = dirname(inputReal)
 
   const label = excerpt(relative(rootReal, inputReal) || basename(inputReal), 200)
 
@@ -573,7 +582,6 @@ export {
   EXCERPT_LIMIT,
   MASK_LIMIT,
   byCodeUnit,
-  decodeUtf8,
   excerpt,
   hasBom,
   mask,

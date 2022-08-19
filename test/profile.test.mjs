@@ -250,6 +250,26 @@ test('a run that profiled no record is incomplete and says so', async () => {
   assert.notEqual(report.status, 'pass')
 })
 
+test('a file shorter than a byte order mark is still read', async () => {
+  // The mark is sniffed from the first three bytes, so a file with fewer than
+  // three has to be handled by a path of its own rather than never decoded.
+  const report = await profileBytes(new Uint8Array([0x69, 0x64]), { file: 'input.csv', format: 'csv' })
+  assert.equal(report.status, 'incomplete')
+  assert.deepEqual(report.profile.columns.map((entry) => entry.name), ['id'])
+  assert.deepEqual(ruleIds(report), ['no-records-profiled'])
+})
+
+test('a column name longer than the report allows is bounded, and says it was cut', async () => {
+  const name = 'n'.repeat(400)
+  const report = await profileText(`id,${name}\n1,10\n2,text\n`, { file: 'input.csv', format: 'csv' })
+  const finding = report.findings.find((entry) => entry.ruleId === 'column-type-mixed')
+
+  assert.equal(report.profile.columns[1].name.length, 203, '200 characters and the ellipsis')
+  assert.equal(report.profile.columns[1].name.endsWith('...'), true)
+  assert.equal(finding.location.pointer.length <= 212, true)
+  assert.equal(finding.message.length <= 323, true)
+})
+
 test('the report carries the documented envelope', async () => {
   const report = await profileText('id\n1\n', { file: 'orders.csv', format: 'csv' })
   assert.equal(report.schemaVersion, '1')
@@ -257,6 +277,16 @@ test('the report carries the documented envelope', async () => {
   assert.deepEqual(Object.keys(report), ['schemaVersion', 'tool', 'status', 'summary', 'profile', 'findings'])
   assert.equal(typeof report.summary.checked, 'number')
   assert.equal(Array.isArray(report.findings), true)
+})
+
+test('profileFile without a usable input path is a configuration error', async () => {
+  await assert.rejects(() => profileFile({}), /An input path is required/)
+  await assert.rejects(() => profileFile({ input: '   ' }), /An input path is required/)
+  await assert.rejects(() => profileFile({ input: 'a.csv', root: '' }), /Root must be a non-empty string/)
+  await assert.rejects(
+    () => profileFile({ input: join(projectDirectory, 'examples/orders-clean.csv'), root: join(projectDirectory, 'nowhere') }),
+    /Root could not be read/,
+  )
 })
 
 test('an unknown option, limit or format is refused rather than ignored', async () => {
