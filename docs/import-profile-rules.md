@@ -12,8 +12,9 @@ picked the popular type would describe a file nobody has, and the mixed column i
 
 **Nothing is rewritten.** The input is opened read-only. There is no auto-fix, no normalisation pass
 and no write path anywhere in `src/` — the module imports no write API at all. A profile goes to
-stdout, or to `--out`, which refuses to be the input file and refuses to replace an existing file
-without `--overwrite`.
+stdout, or to `--out`, which refuses to be the input file — identity is the inode, because a hard
+link is a second name for one file and resolves to a real path of its own — and refuses to replace
+an existing file without `--overwrite`.
 
 **No value reaches the report.** An import file is where personal data lives. Every sample is a
 *redacted reference*: a record number, and a masked shape in which every digit is `9` and every

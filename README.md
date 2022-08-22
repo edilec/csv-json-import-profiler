@@ -19,8 +19,9 @@ the thing that will stop the load at three in the morning.
 **Nothing is rewritten.** The input is opened read-only. There is no auto-fix, no normalisation pass
 and no write path anywhere in `src/` — the library imports `createReadStream`, `realpath` and `stat`
 from the filesystem and nothing else. A profile goes to stdout, or to `--out`, which refuses to be
-the input file (compared on real paths, so a symlink alias cannot launder one into the other) and
-refuses to replace an existing file without `--overwrite`.
+the input file (compared on the inode, so neither a symlink alias nor a hard link — which has no
+target to resolve — can launder one into the other) and refuses to replace an existing file without
+`--overwrite`.
 
 **No value reaches the report.** An import file is where personal data lives. Every sample is a
 *redacted reference*: a record number, and a masked shape in which every digit is `9` and every

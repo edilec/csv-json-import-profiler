@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { link, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import test from 'node:test'
@@ -188,6 +188,34 @@ test('--out refuses to be the input, even by way of a symlink', async () => {
       assert.match(stderr, /never rewrites what it profiles/)
     }
     assert.equal(await readFile(input, 'utf8'), 'id,amount\n1,10\n', 'the input is exactly as it was')
+  })
+})
+
+test('--out refuses to be the input by way of a hard link, which has no target to resolve', async () => {
+  // The destructive case a real-path comparison cannot see. A symbolic link
+  // resolves to its target, so comparing real paths catches it. A hard link has
+  // no target: two names for one inode resolve to two different real paths, the
+  // comparison says "different file", and the write destroys the input. Hard
+  // links are ordinary in build trees -- `cp -l`, package stores, backups.
+  await withBase(async (base) => {
+    const input = join(base, 'input.csv')
+    const alias = join(base, 'alias.csv')
+    const content = 'id,amount\n1,10\n'
+    await writeFile(input, content)
+    await link(input, alias)
+
+    // --overwrite is the dangerous combination: without it the run stops
+    // because the destination exists, which hides the destruction rather than
+    // preventing it. Both names are tried as the input, because neither of them
+    // is the "real" one.
+    for (const [subject, destination] of [[input, alias], [alias, input]]) {
+      const { code, stdout, stderr } = await run(['--input', subject, '--out', destination, '--overwrite'])
+      assert.equal(code, 2)
+      assert.equal(stdout, '', 'a refused destination is a configuration error, so stdout stays empty')
+      assert.match(stderr, /never rewrites what it profiles/)
+      assert.equal(await readFile(input, 'utf8'), content, 'the input is exactly as it was')
+      assert.equal(await readFile(alias, 'utf8'), content, 'and so is the other name for the same file')
+    }
   })
 })
 

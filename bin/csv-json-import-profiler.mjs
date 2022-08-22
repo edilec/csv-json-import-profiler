@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { realpath, writeFile } from 'node:fs/promises'
+import { realpath, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
 
 import { formatReport, profileFile } from '../src/index.mjs'
@@ -156,13 +156,30 @@ function parseArguments(argv) {
 }
 
 /**
+ * Whether two existing paths name the same file.
+ *
+ * Identity is the inode, not the resolved path. `realpath` answers this for a
+ * symbolic link, which has a target to resolve, and for nothing else: a hard
+ * link has no target, so two names for one inode resolve to two different real
+ * paths. A path comparison then says "different file" and the write destroys
+ * the input. Hard links are ordinary -- `cp -l`, package stores, backup trees
+ * -- so the destination is compared by `dev` and `ino`.
+ */
+async function sameFile(left, right) {
+  const [one, other] = await Promise.all([stat(left).catch(() => null), stat(right).catch(() => null)])
+  if (one === null || other === null) return false
+  return one.dev === other.dev && one.ino === other.ino
+}
+
+/**
  * Decide where a profile may be written.
  *
  * Two refusals, both about not destroying the subject of the run: the profile
- * never goes to the input itself, compared on real paths so a symlink cannot
- * launder one into the other, and it never replaces an existing file unless the
- * caller said so. A profiler that overwrote the export it was asked to describe
- * would be the worst possible bug in a tool like this.
+ * never goes to the input itself, compared on the inode so that neither a
+ * symbolic link nor a hard link can launder one into the other, and it never
+ * replaces an existing file unless the caller said so. A profiler that
+ * overwrote the export it was asked to describe would be the worst possible bug
+ * in a tool like this.
  */
 async function resolveOutput(outPath, inputPath, overwrite) {
   const target = resolve(outPath)
@@ -174,7 +191,8 @@ async function resolveOutput(outPath, inputPath, overwrite) {
   const directory = await realpath(dirname(target)).catch(() => null)
   if (directory === null) throw new Error(`--out directory does not exist: ${dirname(outPath)}`)
   const targetReal = existingReal ?? join(directory, basename(target))
-  if (inputReal !== null && targetReal === inputReal) {
+  const identical = existingReal !== null && inputReal !== null && (await sameFile(existingReal, inputReal))
+  if (inputReal !== null && (targetReal === inputReal || identical)) {
     throw new Error('--out must not be the input file; this tool never rewrites what it profiles')
   }
   if (existingReal !== null && !overwrite) {
