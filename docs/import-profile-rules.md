@@ -55,8 +55,12 @@ A streaming RFC 4180 state machine, not a `split` over newlines:
 
 Where real files leave the standard, the behaviour is chosen rather than accidental: a quote inside
 an unquoted field is literal text, text after a closing quote is appended as literal text, and a
-completely empty line is skipped rather than reported as a one-field record. The first record is the
-header. There is no headerless mode.
+completely empty line is skipped rather than reported as a one-field record.
+
+The first record is the header, and there is no headerless mode. Header names and JSON keys are
+schema: they are sanitised but not masked, because a report that hid them would name nothing. The
+consequence is worth stating plainly -- profiling a headerless CSV puts that file's first row into
+the report as column names.
 
 ### JSON framing
 

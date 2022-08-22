@@ -181,7 +181,10 @@ This tool reports what a file says about itself. It cannot tell you:
 - **Whether your importer will accept the file.** It reports the hazards it can see in the bytes; an
   importer has its own rules, its own type mapping and its own null handling.
 - **Whether a masked sample is safe to share.** Masking removes content, not context: a column named
-  `patient_nhs_number` says something even when every value is `999 999 9999`.
+  `patient_nhs_number` says something even when every value is `999 999 9999`. Column names and JSON
+  keys are schema, so they are sanitised but *not* masked — which also means that pointing this tool
+  at a **headerless** CSV puts that file's first row into the report as column names. There is no
+  headerless mode, and this is the reason to care about that.
 - **Whether an encoding is right.** It decodes strictly as UTF-8 and refuses anything else rather
   than guessing. A Latin-1 export is reported as not UTF-8; it is not transcoded.
 
