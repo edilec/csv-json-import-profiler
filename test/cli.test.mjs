@@ -255,6 +255,36 @@ test('--root reports relative paths and refuses an input that resolves outside i
   })
 })
 
+test('a sibling directory whose name starts with the root is outside the root', async () => {
+  // The classic confinement bypass: `/base/inbox-archive/x.csv` begins with the
+  // string `/base/inbox`, so a prefix comparison without the separator lets it
+  // through and the file is read and reported. The separator is what makes the
+  // comparison about directories rather than about text.
+  await withBase(async (base) => {
+    const root = join(base, 'inbox')
+    const sibling = join(base, 'inbox-archive')
+    await mkdir(root)
+    await mkdir(sibling)
+    await writeFile(join(root, 'inside.csv'), 'id,name\n1,Ann\n')
+    await writeFile(join(sibling, 'secret.csv'), 'id,name\n1,Zelda\n')
+
+    const refused = await run(['--input', join(sibling, 'secret.csv'), '--root', root, '--json'])
+    assert.equal(refused.code, 2)
+    const report = JSON.parse(refused.stdout)
+    assert.equal(report.status, 'incomplete')
+    assert.equal(report.findings.some((finding) => finding.ruleId === 'input-escapes-root'), true)
+    assert.equal(report.summary.checked, 0, 'the refused file was not read')
+    assert.equal(refused.stdout.includes('Zelda'), false, 'no content from outside the root reaches the report')
+    assert.equal(refused.stdout.includes('secret.csv'), true, 'the refusal still names the file it refused')
+
+    // The same run against a file genuinely inside the root succeeds, so the
+    // refusal above is about containment and not about refusing everything.
+    const allowed = await run(['--input', join(root, 'inside.csv'), '--root', root, '--json'])
+    assert.equal(allowed.code, 0)
+    assert.equal(JSON.parse(allowed.stdout).profile.file, 'inside.csv')
+  })
+})
+
 test('a file inside a symlinked root is profiled, not falsely refused', async () => {
   // The over-correction this pins: comparing a real root against a path that
   // was not resolved refuses files that genuinely are inside the root. A false
