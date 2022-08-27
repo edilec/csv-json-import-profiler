@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { Buffer } from 'node:buffer'
 import test from 'node:test'
 
 import { profileText } from '../src/index.mjs'
@@ -28,10 +29,22 @@ test('maxInputBytes stops the read and names itself', async () => {
   assert.match(report.findings.find((finding) => finding.ruleId === 'input-too-large').message, /maxInputBytes limit of 40/)
 })
 
-test('an input inside maxInputBytes is profiled without a finding', async () => {
-  const report = await profileText('id,name\n1,Ann\n', csv({ limits: { maxInputBytes: 4096 } }))
-  assert.equal(report.status, 'pass')
-  assert.deepEqual(ruleIds(report), [])
+test('an input of exactly maxInputBytes is profiled; one byte more is refused', async () => {
+  // Fourteen bytes, counted rather than assumed, so both halves of this test
+  // sit on the bound itself: at 14 the input is read to the end, at 13 it is
+  // not. A comparison that refused the exact limit, or let one byte past it
+  // through, changes one of these two answers.
+  const text = 'id,name\n1,Ann\n'
+  assert.equal(Buffer.byteLength(text, 'utf8'), 14, 'the fixture is exactly as long as the limit under test')
+
+  const exact = await profileText(text, csv({ limits: { maxInputBytes: 14 } }))
+  assert.equal(exact.status, 'pass')
+  assert.deepEqual(ruleIds(exact), [])
+  assert.equal(exact.summary.bytes, 14)
+
+  const over = await profileText(text, csv({ limits: { maxInputBytes: 13 } }))
+  assert.equal(over.status, 'incomplete')
+  assert.equal(ruleIds(over).includes('input-too-large'), true)
 })
 
 test('maxRecords stops at the record it names, and the count is exact', async () => {
@@ -73,6 +86,26 @@ test('maxRowBytes counts bytes, not characters, when the two differ', async () =
   assert.match(finding.message, /is 22 bytes/)
 })
 
+test('a record of exactly maxRowBytes is profiled; one byte more is refused', async () => {
+  // Three accented characters make the record five characters and eight bytes,
+  // so the byte comparison is the one on trial here rather than the reader's
+  // character bound: at a limit of 8 the record is profiled, at 7 it is not.
+  const text = 'id,note\n1,\u00e9\u00e9\u00e9\n'
+  assert.equal(Buffer.byteLength('1,\u00e9\u00e9\u00e9', 'utf8'), 8, 'the record is exactly as long as the limit under test')
+
+  const exact = await profileText(text, csv({ limits: { maxRowBytes: 8 } }))
+  assert.equal(exact.status, 'pass')
+  assert.deepEqual(ruleIds(exact), [])
+  assert.equal(exact.summary.checked, 1)
+
+  const over = await profileText(text, csv({ limits: { maxRowBytes: 7 } }))
+  assert.equal(over.status, 'incomplete')
+  assert.equal(over.summary.skipped, 1)
+  const finding = over.findings.find((entry) => entry.ruleId === 'row-too-large')
+  assert.notEqual(finding, undefined)
+  assert.match(finding.message, /is 8 bytes/)
+})
+
 test('maxColumns refuses a header wider than the limit', async () => {
   const header = Array.from({ length: 6 }, (_, index) => `c${index}`).join(',')
   const report = await profileText(`${header}\n1,2,3,4,5,6\n`, csv({ limits: { maxColumns: 4 } }))
@@ -80,6 +113,18 @@ test('maxColumns refuses a header wider than the limit', async () => {
   assert.equal(report.status, 'incomplete')
   assert.equal(ruleIds(report).includes('too-many-columns'), true)
   assert.equal(report.summary.checked, 0, 'nothing was profiled against a header that was refused')
+})
+
+test('a header of exactly maxColumns is profiled; one column more is refused', async () => {
+  const exact = await profileText('a,b,c,d\n1,2,3,4\n', csv({ limits: { maxColumns: 4 } }))
+  assert.equal(exact.status, 'pass')
+  assert.deepEqual(ruleIds(exact), [])
+  assert.equal(exact.summary.columns, 4)
+  assert.equal(exact.summary.checked, 1)
+
+  const over = await profileText('a,b,c,d,e\n1,2,3,4,5\n', csv({ limits: { maxColumns: 4 } }))
+  assert.equal(over.status, 'incomplete')
+  assert.equal(ruleIds(over).includes('too-many-columns'), true)
 })
 
 test('maxColumns also counts JSON keys as they appear', async () => {
@@ -102,14 +147,27 @@ test('maxDepth refuses a record nested past the limit and does not parse it', as
   assert.equal(report.summary.skipped, 1)
 })
 
-test('a record at exactly maxDepth is profiled', async () => {
-  const report = await profileText('[{"a":{"b":1}}]', {
+test('a record at exactly maxDepth is profiled; one level deeper is refused', async () => {
+  // `{"a":{"b":{"c":1}}}` nests three levels, which is the limit itself -- the
+  // record this test is named for. The record below it nests four, and the only
+  // difference between the two runs is that one level.
+  const exact = await profileText('[{"a":{"b":{"c":1}}}]', {
     file: 'input.json',
     format: 'json',
     limits: { maxDepth: 3 },
   })
-  assert.equal(report.status, 'pass')
-  assert.equal(report.summary.checked, 1)
+  assert.equal(exact.status, 'pass')
+  assert.deepEqual(ruleIds(exact), [])
+  assert.equal(exact.summary.checked, 1)
+
+  const over = await profileText('[{"a":{"b":{"c":{"d":1}}}}]', {
+    file: 'input.json',
+    format: 'json',
+    limits: { maxDepth: 3 },
+  })
+  assert.equal(over.status, 'incomplete')
+  assert.equal(ruleIds(over).includes('record-too-deep'), true)
+  assert.equal(over.summary.skipped, 1)
 })
 
 test('maxFindings caps the report and says that it did', async () => {
