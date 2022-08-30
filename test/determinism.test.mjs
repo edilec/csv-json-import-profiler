@@ -4,7 +4,8 @@ import { dirname, join, resolve } from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
-import { byCodeUnit, formatReport, profileFile, profileText } from '../src/index.mjs'
+import { RULE_SEVERITY, SECTIONS, byCodeUnit, formatReport, profileFile, profileText, sortFindings } from '../src/index.mjs'
+import { FAMILIES, TYPES } from '../src/values.mjs'
 
 const projectDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -56,6 +57,130 @@ test('column findings are emitted in code-unit order, not collation order', asyn
 
   const collated = [...pointers(report)].sort(new Intl.Collator('en').compare)
   assert.notDeepEqual(collated, pointers(report), 'a collator would have produced a different order')
+})
+
+test('findings merged from several files are ordered by file, in code-unit order', () => {
+  // One run profiles one file, so the file key of the sort is reachable only
+  // through a caller merging findings from several runs into one report --
+  // which is why `sortFindings` is exported. `README.md` precedes `assets.csv`
+  // by code unit and follows it under an English collator, so the two orders
+  // are told apart here rather than assumed to be the same.
+  const row = (file) => ({
+    file,
+    section: SECTIONS.input,
+    record: 0,
+    line: 0,
+    pointer: '/input',
+    ruleId: 'input-has-bom',
+    message: 'the input starts with a byte order mark',
+  })
+  const ordered = sortFindings(['assets.csv', 'Zebra.csv', 'README.md', 'apple.csv'].map(row)).map((entry) => entry.file)
+
+  assert.deepEqual(ordered, ['README.md', 'Zebra.csv', 'apple.csv', 'assets.csv'])
+  assert.notDeepEqual(
+    [...ordered].sort(new Intl.Collator('en').compare),
+    ordered,
+    'a collator would have produced a different order',
+  )
+})
+
+test('key drift lists the missing and the extra names in code-unit order', async () => {
+  // Both lists come from the input, so their alphabet is whatever the file
+  // holds: `README` before `apple` by code unit and after it by collation,
+  // `a-b` before `a_b` by code unit and after it by collation. The first
+  // record declares its keys in neither order, so the emitted order is the
+  // sort's answer and not the file's.
+  const first = '{"Zebra":1,"apple":1,"README":1,"assets":1,"URL_ENTRIES":1}'
+  const second = '{"apricot":1,"a_b":1,"Yak":1,"a-b":1,"Zebra":1}'
+  const report = await profileText(`[${first},${second}]`, { file: 'input.json', format: 'json' })
+
+  const drift = report.findings.find((finding) => finding.ruleId === 'record-key-drift')
+  assert.notEqual(drift, undefined)
+  assert.equal(
+    drift.message,
+    'Record 2 has a different key set from the first record ' +
+      '(missing 4: README, URL_ENTRIES, apple, assets; extra 4: Yak, a-b, a_b, apricot).',
+  )
+
+  // The same two lists under an English collator, which is what the assertion
+  // above exists to exclude.
+  const collator = new Intl.Collator('en')
+  assert.equal(['README', 'URL_ENTRIES', 'apple', 'assets'].sort(collator.compare).join(', '), 'apple, assets, README, URL_ENTRIES')
+  assert.equal(['Yak', 'a-b', 'a_b', 'apricot'].sort(collator.compare).join(', '), 'a_b, a-b, apricot, Yak')
+})
+
+test('a mixed column orders its families, its types and its samples the same way everywhere', async () => {
+  // One column holding every type this profiler knows. Four places order that
+  // column: the evidence string, the family list, the type map and the sample
+  // list. Each is asserted whole, so reversing or dropping any one of the four
+  // sorts changes an emitted value.
+  const rows = [
+    '{"v":"abc"}',
+    '{"v":{"k":1}}',
+    '{"v":7}',
+    '{"v":"2020-01-02"}',
+    '{"v":true}',
+    '{"v":1.5}',
+    '{"v":""}',
+    '{"v":null}',
+  ]
+  const report = await profileText(`[${rows.join(',')}]`, { file: 'input.json', format: 'json' })
+  const mixed = report.findings.find((finding) => finding.ruleId === 'column-type-mixed')
+  const column = report.profile.columns[0]
+
+  // The evidence keeps the first four families in order, not the first four
+  // the file happened to show.
+  assert.equal(
+    mixed.evidence,
+    'record 5 boolean/boolean aaaa | record 4 date/date 9999-99-99 | record 3 numeric/integer 9 | record 2 structured/structured {aaaaaa}',
+  )
+  assert.match(mixed.message, /holds 5 type families \(boolean, date, numeric, structured, text\)/)
+  assert.deepEqual(column.families, ['boolean', 'date', 'numeric', 'structured', 'text'])
+  assert.deepEqual(Object.keys(column.types), [
+    'boolean',
+    'date',
+    'empty',
+    'integer',
+    'null',
+    'number',
+    'string',
+    'structured',
+  ])
+  assert.deepEqual(column.samples.map((sample) => sample.family), ['boolean', 'date', 'numeric', 'structured'])
+  // The JSON report is the serialised object, so the type map's key order is
+  // an emitted order and not an implementation detail.
+  assert.match(
+    JSON.stringify(report.profile.columns[0].types),
+    /^\{"boolean":1,"date":1,"empty":1,"integer":1,"null":1,"number":1,"string":1,"structured":1\}$/,
+  )
+})
+
+test('the closed vocabularies this tool orders are ones a collator would order identically', () => {
+  // Rule ids, family names and type names are spelled in lowercase ASCII and
+  // hyphens, and over that alphabet an English collator and code-unit order
+  // agree on every pair. That is why substituting a collator into the sorts
+  // over these three vocabularies changes nothing observable -- and why this
+  // test is the guard for them: a rule id or family name introduced outside
+  // that alphabet would make the substitution matter, and would fail here
+  // before it could drift between machines.
+  const collator = new Intl.Collator('en')
+  const sign = (value) => (value < 0 ? -1 : value > 0 ? 1 : 0)
+  for (const [label, values] of [
+    ['rule ids', Object.keys(RULE_SEVERITY)],
+    ['families', [...FAMILIES]],
+    ['types', [...TYPES]],
+  ]) {
+    assert.equal(values.length > 1, true, `${label} must have something to order`)
+    for (const left of values) {
+      for (const right of values) {
+        assert.equal(
+          sign(byCodeUnit(left, right)),
+          sign(collator.compare(left, right)),
+          `${label}: "${left}" and "${right}" order differently by code unit and by collation`,
+        )
+      }
+    }
+  }
 })
 
 test('the profile lists columns in the order the input declares them', async () => {
