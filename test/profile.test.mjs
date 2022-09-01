@@ -314,6 +314,72 @@ test('a format that cannot be inferred is a configuration error, never a guess',
   assert.equal(inferred.profile.format, 'csv')
 })
 
+test('every documented extension decides a format, whatever its case', async () => {
+  // The matrix row by row, through the real entry point. Two of these rows --
+  // `.tsv` and `.ndjson` -- map to the format of the *other* family, so a
+  // swapped row is only visible if the inferred format is asserted. The
+  // upper-case spellings pin the `toLowerCase()` in the lookup, which nothing
+  // else exercises.
+  await withDirectory(async (base) => {
+    const cases = [
+      ['orders.csv', 'id,name\n1,Ann\n', 'csv'],
+      ['orders-tab.tsv', 'id,name\n1,Ann\n', 'csv'],
+      ['shouted.CSV', 'id,name\n1,Ann\n', 'csv'],
+      ['catalog.json', '[{"a":1}]', 'json'],
+      ['events.jsonl', '{"a":1}\n', 'jsonl'],
+      ['events-nd.ndjson', '{"a":1}\n', 'jsonl'],
+      ['shouted-nd.NDJSON', '{"a":1}\n', 'jsonl'],
+    ]
+    for (const [name, content, format] of cases) {
+      await writeFile(join(base, name), content)
+      const report = await profileFile({ input: join(base, name) })
+      assert.equal(report.profile.format, format, `${name} must be read as ${format}`)
+      assert.equal(report.status, 'pass', `${name} must profile cleanly as ${format}`)
+      assert.equal(report.summary.checked, 1, `${name} must profile its one record`)
+    }
+  })
+})
+
+test('a null token that did not survive the shell is refused, and so is a flood of them', async () => {
+  // Both guards are about configuration that would be accepted and then never
+  // match anything, which is the ignored-configuration defect this tool refuses
+  // everywhere else.
+  await assert.rejects(
+    () => profileText('a\n1\n', { file: 'a.csv', format: 'csv', nullTokens: ['N\uFFFDA'] }),
+    /A null token arrived as U\+FFFD/,
+  )
+
+  const thirtyTwo = Array.from({ length: 32 }, (_, index) => `t${index}`)
+  const accepted = await profileText('a\n1\n', { file: 'a.csv', format: 'csv', nullTokens: thirtyTwo })
+  assert.equal(accepted.status, 'pass', '32 tokens is the documented cap, so it is accepted')
+
+  await assert.rejects(
+    () => profileText('a\n1\n', { file: 'a.csv', format: 'csv', nullTokens: [...thirtyTwo, 't32'] }),
+    /At most 32 null tokens may be configured/,
+  )
+})
+
+test('an integer too long for a double to hold is reported, not thrown over', async () => {
+  // End to end, because the failure mode of parsing first is not a wrong
+  // answer: it is a RangeError thrown out of the profiler, which the stream
+  // handler would then report as "the input could not be read" -- a defect of
+  // this tool described as a property of the file.
+  const report = await profileText(`id,account\n1,${'9'.repeat(400)}\n`, { file: 'ledger.csv', format: 'csv' })
+  assert.equal(report.status, 'pass')
+  assert.deepEqual(ruleIds(report), ['column-integer-unsafe'])
+  assert.equal(column(report, 'account').maxLength, 400)
+})
+
+test('a three-byte file that is nothing but a byte order mark is still read', async () => {
+  // The shortest input that can carry a BOM is exactly the BOM. A length guard
+  // asking for one byte more reports a file with no mark at all.
+  const report = await profileBytes(new Uint8Array([0xef, 0xbb, 0xbf]), { file: 'input.csv', format: 'csv' })
+  assert.equal(ruleIds(report).includes('input-has-bom'), true)
+  assert.equal(report.status, 'incomplete')
+  assert.equal(report.summary.bytes, 3)
+  assert.equal(report.summary.checked, 0)
+})
+
 test('the default limits are the documented ones', () => {
   assert.deepEqual(DEFAULT_LIMITS, {
     maxColumns: 256,

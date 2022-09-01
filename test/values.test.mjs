@@ -87,6 +87,15 @@ test('integers outside the exact range of a double are detected before they are 
   // The reason the check uses BigInt: by the time a number exists the
   // information the check needs is already gone.
   assert.equal(Number('9007199254740993'), 9007199254740992)
+
+  // And the reason it is `BigInt(text)` rather than `BigInt(Number(text))`:
+  // a literal long enough to overflow a double is an ordinary integer to
+  // BigInt and `Infinity` to Number, which BigInt then refuses outright. A
+  // long account number or identifier is a real thing to find in an import.
+  const long = '9'.repeat(400)
+  assert.equal(isUnsafeInteger(long), true)
+  assert.equal(Number(long), Number.POSITIVE_INFINITY)
+  assert.equal(isUnsafeInteger(`-${long}`), true)
 })
 
 test('leading zeros are detected, because typing the column as a number eats them', () => {
