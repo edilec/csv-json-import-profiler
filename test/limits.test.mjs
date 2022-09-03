@@ -222,6 +222,22 @@ test('a record that is not JSON leaves a gap, and the gap is admitted', async ()
   assert.equal(report.summary.checked, 2, 'the records either side of it were still profiled')
 })
 
+test('a run whose only record a limit refused reports that it checked nothing', async () => {
+  // records 1, checked 0. The empty-run guard is written in terms of `checked`
+  // because a record that was found and refused is not a record that was
+  // examined; keyed on `records` this warning would disappear exactly on the
+  // runs that saw the least. Both findings are asserted, so the guard cannot
+  // be satisfied by the row limit's own finding.
+  const report = await profileText('id,note\n1,\u00e9\u00e9\u00e9\n', csv({ limits: { maxRowBytes: 7 } }))
+
+  assert.equal(report.summary.records, 1)
+  assert.equal(report.summary.checked, 0)
+  assert.equal(report.summary.skipped, 1)
+  assert.deepEqual(ruleIds(report), ['no-records-profiled', 'row-too-large'])
+  assert.equal(report.summary.warnings, 1)
+  assert.equal(report.status, 'incomplete')
+})
+
 test('a limit that is not an integer, or below its floor, is refused', async () => {
   await assert.rejects(() => profileText('a\n1\n', csv({ limits: { maxRecords: 1.5 } })), /must be an integer/)
   await assert.rejects(() => profileText('a\n1\n', csv({ limits: { maxRowBytes: 0 } })), /at least 1/)

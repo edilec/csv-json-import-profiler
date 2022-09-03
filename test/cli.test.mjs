@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
-import { link, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { chmod, link, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import test from 'node:test'
@@ -235,6 +235,32 @@ test('--out refuses to replace an existing file unless told to', async () => {
     const allowed = await run(['--input', input, '--out', output, '--overwrite'])
     assert.equal(allowed.code, 0)
     assert.equal(JSON.parse(await readFile(output, 'utf8')).tool, 'csv-json-import-profiler')
+  })
+})
+
+test('a profile that cannot be written to --out still reaches stdout, and the run exits 2', async () => {
+  // The write is the side effect, not the answer: the report still goes to
+  // stdout so a pipeline keeps its output, and the exit code says the run did
+  // not do everything it was asked to. Without the failure this input exits 0,
+  // so the exit code here is the write failure and nothing else.
+  await withBase(async (base) => {
+    const input = join(base, 'input.csv')
+    await writeFile(input, 'id,amount\n1,10\n')
+    const locked = join(base, 'locked')
+    await mkdir(locked)
+    await chmod(locked, 0o500)
+
+    try {
+      const { code, stdout, stderr } = await run(['--input', input, '--out', join(locked, 'profile.json')])
+      assert.equal(code, 2)
+      assert.match(stdout, /status pass/, 'the profile still reaches stdout')
+      assert.match(stderr, /The profile could not be written to --out/)
+
+      const clean = await run(['--input', input])
+      assert.equal(clean.code, 0, 'the same input without --out exits 0, so the 2 above is the write failure')
+    } finally {
+      await chmod(locked, 0o700)
+    }
   })
 })
 
