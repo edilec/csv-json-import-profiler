@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { Buffer } from 'node:buffer'
 import { execFile } from 'node:child_process'
 import { mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -63,7 +64,10 @@ for (const [label, name, content] of INPUTS) {
       const before = await fingerprint(target)
 
       const report = await profileFile({ input: target })
-      assert.ok(['pass', 'fail', 'incomplete'].includes(report.status))
+      // The run really read this file: an enumeration of every status a report
+      // can carry would hold just as well for a run that read nothing.
+      assert.equal(report.profile.file, name)
+      assert.equal(report.summary.bytes, Buffer.byteLength(content, 'utf8'))
 
       assert.deepEqual(await fingerprint(target), before, 'the input changed during a profile run')
       assert.equal(await readFile(target, 'utf8'), content)
@@ -77,11 +81,14 @@ for (const [label, name, content] of INPUTS) {
       const before = await fingerprint(target)
 
       const { code } = await run(['--input', target, '--out', join(base, 'profile.json'), '--json'])
-      assert.ok([0, 1, 2].includes(code))
 
       assert.deepEqual(await fingerprint(target), before, 'the input changed during a profile run')
-      // The profile went somewhere else entirely.
-      assert.equal(JSON.parse(await readFile(join(base, 'profile.json'), 'utf8')).tool, 'csv-json-import-profiler')
+      // The profile went somewhere else entirely, and the exit code is the one
+      // the report it wrote asks for -- a check that can fail, unlike an
+      // enumeration of the three codes this binary is able to return.
+      const written = JSON.parse(await readFile(join(base, 'profile.json'), 'utf8'))
+      assert.equal(written.tool, 'csv-json-import-profiler')
+      assert.equal(code, { pass: 0, fail: 1, incomplete: 2 }[written.status], `${written.status} must not exit ${code}`)
     })
   })
 }
