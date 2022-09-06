@@ -35,8 +35,9 @@ All notable changes to this project are documented in this file.
 - a CLI with `--input`, `--root`, `--format`, `--delimiter`, `--null-tokens`,
   `--max-null-ratio`, `--json`, `--out`, `--overwrite` and the limit flags, with
   exit codes 0 / 1 / 2 and both shapes of exit 2;
-- `--out` refusals: never the input file, compared on real paths, and never over
-  an existing file without `--overwrite`;
+- `--out` refusals: never the input file -- identity is the inode, so neither a
+  symbolic link nor a hard link is a way round it -- and never over an existing
+  file without `--overwrite`;
 - clean and deliberately broken examples in all three formats;
 - the rule catalog, type vocabulary, limits, report shape and sanitisation set
   in `docs/import-profile-rules.md`.

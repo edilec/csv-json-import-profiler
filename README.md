@@ -96,6 +96,9 @@ node bin/csv-json-import-profiler.mjs --input examples/events-clean.jsonl    # e
 | `json` | one top-level array of records | `.json` |
 | `jsonl` | one JSON value per line (NDJSON) | `.jsonl`, `.ndjson` |
 
+Extension matching is case-insensitive, so `.CSV` and `.NDJSON` infer the same formats as their
+lowercase spellings. Anything else must be declared with `--format`.
+
 The CSV reader is a streaming state machine, not a split on newlines: a quoted field may contain the
 delimiter, may contain CR, LF or CRLF kept literally, and `""` inside quotes is one literal quote.
 A record straddling any number of chunk boundaries parses the same as one that does not.
@@ -147,10 +150,16 @@ started would be worse.
 - **The input is never rewritten.** Bytes and modification time are compared before and after runs
   over six inputs — clean and broken, through the library and through the binary with `--out`.
 - **`pass` with `checked: 0` is unreachable.** A run that profiled no record is `incomplete`.
-- **Every limit is enforced where it is documented**, tested from outside it and from just inside it,
-  and exceeding one is an explicit finding with an `incomplete` report, never a silent truncation.
-- **Every `incomplete` flag is load bearing.** Each one was deleted in turn and a test failed for
-  each, on inputs that profiled records first so the empty-run guard was not what caught it.
+- **Every limit is enforced where it is documented**, tested on the bound itself and one step past
+  it — one byte, one column, one level — and exceeding one is an explicit finding with an
+  `incomplete` report, never a silent truncation.
+- **Every `incomplete` flag that can change an answer is load bearing.** Eight of the eleven were
+  deleted in turn and a test failed for each, on inputs that profiled records first so the empty-run
+  guard was not what caught it. The other three sit on paths that end with `checked === 0`, where
+  `finalize()` reaches the same verdict anyway: an input refused for escaping the root, an input
+  that could not be opened, and a read that fails part way through. The last of those stops a failed
+  read from being reported as a verdict about the input once records have been profiled — a state no
+  test can reach on a regular file, so it is kept rather than pinned.
 - **Every finding's severity comes from one frozen table.** An unknown rule id throws rather than
   defaulting to anything. Because declarations that agree with each other can be edited together,
   every severity that decides a verdict is pinned by running the binary and asserting the exit code.
@@ -159,11 +168,14 @@ started would be worse.
   included), `U+2028`, `U+2029` and the bidi overrides are removed, so nothing read can forge a
   report line or reverse one.
 - **Output is deterministic.** No wall clock in the output, no locale, no `localeCompare`, no
-  `Intl.Collator`, no random source, no network — pinned by the order the report actually emits, not
-  by grepping the source.
+  `Intl.Collator`, no random source, no network. Every sort over text the input supplies is pinned
+  by an emitted string whose collation order differs from its code-unit order, not by grepping the
+  source; the sorts over closed vocabularies — rule ids, family and type names — are pinned by
+  enumerating all 832 ordered pairs and asserting that a collator would order them identically.
 - **Containment is decided on real paths, both sides.** A symlink escaping the root is refused
-  unread; a file genuinely inside a symlinked root is still profiled, because a false refusal is a
-  bug too.
+  unread; a sibling directory whose name merely starts with the root's (`inbox-archive` beside
+  `inbox`) is outside it; a file genuinely inside a symlinked root is still profiled, because a
+  false refusal is a bug too.
 
 ## Limits and non-goals
 

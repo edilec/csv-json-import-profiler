@@ -32,8 +32,9 @@ content.
 | `.json` | `json` — one top-level array whose elements are the records |
 | `.jsonl`, `.ndjson` | `jsonl` — one JSON value per line |
 
-An extension outside this table with no `--format` is a configuration error: the run never had a
-subject, so stdout stays empty and the message goes to stderr.
+The match is case-insensitive: `.CSV` is `.csv`. An extension outside this table with no `--format`
+is a configuration error: the run never had a subject, so stdout stays empty and the message goes to
+stderr.
 
 Bytes are decoded with `TextDecoder('utf-8', { fatal: true })`, streamed, so a multi-byte character
 split across two reads decodes and a file that stops mid-character is refused. Whether bytes are
@@ -44,6 +45,8 @@ looking at text.
 The input is resolved to its real path and checked against the real root before it is opened. Both
 sides of that comparison are real paths, so a symlink escaping the root is refused *and* a file
 genuinely inside a root reached through a symlink is still profiled. A false refusal is a bug too.
+The comparison ends at a separator, so `inbox-archive/x.csv` is outside a root of `inbox` rather
+than inside it by spelling.
 
 ### CSV framing
 
