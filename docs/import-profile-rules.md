@@ -134,7 +134,7 @@ them is how a column reports "no nulls" while the load fails on a `NOT NULL` con
 | `record-not-json` | error | A record did not parse, so nothing is known about it. |
 | `record-too-deep` | error | A record nests past `maxDepth`. It was not parsed or profiled. |
 | `row-field-count-drift` | error | A CSV row's field count differs from the header's. Its values cannot be attributed to columns, so they are not folded into the profile. |
-| `row-too-large` | error | A record passed `maxRowBytes` and was not profiled. |
+| `row-too-large` | error | A record passed `maxRowBytes` and was not profiled. Raised for the CSV header row too, where it also stops the run: an unread header is an unread schema, and every record after it would be attributed to names the file does not contain. |
 | `time-limit-exceeded` | error | Profiling passed `maxMillis`, so the rest of the input was not read. |
 | `too-many-columns` | error | The input declares more columns than `maxColumns`. Profiling stopped. |
 | `too-many-findings` | error | The report reached `maxFindings`, so later findings were not collected. |

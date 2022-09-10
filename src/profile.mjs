@@ -287,22 +287,55 @@ export class Profiler {
     })
   }
 
+  /**
+   * How large a record is, and whether that size is exact.
+   *
+   * A record the reader stopped accumulating has no full text left to measure,
+   * so it is reported by the characters counted rather than by bytes -- and it
+   * is over the limit by construction, which is why the caller does not compare
+   * an inexact size against anything.
+   */
+  rowSize(record) {
+    if (record.truncated) return { size: record.chars, exact: false }
+    return { size: utf8Length(record.raw ?? record.text), exact: true }
+  }
+
   /** True when the record is within the row limit; records the finding when it is not. */
   withinRowLimit(record, ordinal) {
-    if (record.truncated) {
-      this.noteOversizedRow(ordinal, record.line, record.chars, false)
-      return false
-    }
-    const bytes = utf8Length(record.raw ?? record.text)
-    if (bytes > this.limits.maxRowBytes) {
-      this.noteOversizedRow(ordinal, record.line, bytes, true)
+    const { size, exact } = this.rowSize(record)
+    if (!exact || size > this.limits.maxRowBytes) {
+      this.noteOversizedRow(ordinal, record.line, size, exact)
       return false
     }
     return true
   }
 
-  /** Read the CSV header row. Column names are schema, so they are not masked. */
+  /**
+   * Read the CSV header row. Column names are schema, so they are not masked.
+   *
+   * The header is measured against the row limit before any of it is believed.
+   * A row the reader stopped accumulating keeps its field count and loses its
+   * text, so a header past the limit reads as a handful of real names followed
+   * by truncated and empty ones -- columns the file does not have. Every record
+   * after it would be attributed to those invented names, and the run would say
+   * `pass`. The schema was not read, so there is nothing to profile against and
+   * the run stops.
+   */
   readHeader(record) {
+    const { size, exact } = this.rowSize(record)
+    if (!exact || size > this.limits.maxRowBytes) {
+      this.note({
+        section: SECTIONS.records,
+        pointer: '/records/header',
+        line: record.line,
+        ruleId: 'row-too-large',
+        message: `The header row is ${exact ? `${size} bytes` : `at least ${size} characters`}, past the maxRowBytes limit of ${this.limits.maxRowBytes}. It was not read, so no record could be attributed to a column and profiling stopped.`,
+        suggestion: 'Raise --max-row-bytes to at least the width of the header row.',
+      })
+      this.incomplete = true
+      this.stopped = true
+      return
+    }
     const names = record.fields.map((field) => field.value)
     if (this.columnsExhausted(names.length)) return
     this.header = names

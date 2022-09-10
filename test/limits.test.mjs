@@ -222,6 +222,29 @@ test('a record that is not JSON leaves a gap, and the gap is admitted', async ()
   assert.equal(report.summary.checked, 2, 'the records either side of it were still profiled')
 })
 
+test('a header cut short by the row limit stops the run instead of inventing column names', async () => {
+  // The row limit applies to the header before anything is believed about it.
+  // A truncated row keeps its field count and loses its text, so this header
+  // would otherwise be read as `alpha`, `beta`, `g` and `` -- two names the
+  // file does not contain -- and every record would be attributed to them, in
+  // a report that says `pass`. The header is the schema: unread, there is
+  // nothing to profile against.
+  const report = await profileText('alpha,beta,gamma,delta\n1,2,3,4\n5,6,7,8\n', csv({ limits: { maxRowBytes: 12 } }))
+
+  assert.equal(report.status, 'incomplete')
+  assert.equal(report.summary.checked, 0)
+  assert.equal(report.summary.columns, 0, 'no column name was invented from a header that was not read')
+  assert.deepEqual(ruleIds(report), ['no-records-profiled', 'row-too-large'])
+  assert.match(report.findings.find((finding) => finding.ruleId === 'row-too-large').message, /header row/)
+
+  // A header inside the limit is read exactly as it is written, so the refusal
+  // above is about the limit and not about headers.
+  const fits = await profileText('alpha,beta,gamma,delta\n1,2,3,4\n', csv({ limits: { maxRowBytes: 22 } }))
+  assert.equal(fits.status, 'pass')
+  assert.deepEqual(fits.profile.columns.map((entry) => entry.name), ['alpha', 'beta', 'gamma', 'delta'])
+  assert.equal(fits.summary.checked, 1)
+})
+
 test('a run whose only record a limit refused reports that it checked nothing', async () => {
   // records 1, checked 0. The empty-run guard is written in terms of `checked`
   // because a record that was found and refused is not a record that was
