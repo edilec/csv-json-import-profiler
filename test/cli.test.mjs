@@ -102,6 +102,26 @@ test('a configuration error leaves stdout empty', async () => {
   }
 })
 
+test('a control character in an argument cannot forge a line on stderr', async () => {
+  // argv is as untrusted as the file it names: a path arrives from a directory
+  // listing, a CI variable or a glob. ESC opens a terminal escape sequence and
+  // U+2028 is a line break to a great many readers, so a diagnostic quoting
+  // either back verbatim can be made to read as something else entirely --
+  // which is exactly what this tool refuses to let the input's own bytes do.
+  const escape = '\u001b[2J'
+  const unknown = await run(['--input', 'examples/orders-clean.csv', `--bad${escape}option\u2028tail`])
+  assert.equal(unknown.code, 2)
+  assert.match(unknown.stderr, /Unknown option/)
+  assert.equal(unknown.stderr.includes('\u001b'), false, 'no escape character reaches stderr')
+  assert.equal(unknown.stderr.includes('\u2028'), false, 'no line separator reaches stderr')
+  assert.equal(unknown.stderr.includes('tail'), true, 'the argument is still quoted back, without its controls')
+
+  const missing = await run(['--input', 'examples/orders-clean.csv', '--out', `/nowhere${escape}/profile.json`])
+  assert.equal(missing.code, 2)
+  assert.match(missing.stderr, /--out directory does not exist/)
+  assert.equal(missing.stderr.includes('\u001b'), false, 'no escape character reaches stderr')
+})
+
 test('a file with no recognised extension must be told what it is', async () => {
   await withBase(async (base) => {
     const target = join(base, 'export')

@@ -3,7 +3,7 @@
 import { realpath, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
 
-import { formatReport, profileFile } from '../src/index.mjs'
+import { excerpt, formatReport, profileFile } from '../src/index.mjs'
 
 const HELP = `csv-json-import-profiler
 
@@ -56,6 +56,17 @@ Exit codes:
   2  invalid usage or configuration (no report on stdout), or evidence that was
      missing, undecodable or bounded out (an "incomplete" report on stdout)
 `
+
+/**
+ * A value from argv, bounded and stripped of anything that forges a line.
+ *
+ * An argument is as untrusted as the file it names: paths arrive from directory
+ * listings, CI variables and globs. ESC opens a terminal escape sequence and
+ * U+2028 is a line break to a great many readers, so a diagnostic that quoted
+ * either back verbatim could be made to read as something else -- the same
+ * forgery the report path already refuses to let the input's bytes commit.
+ */
+const quote = (value) => excerpt(String(value), 200)
 
 const LIMIT_FLAGS = new Map([
   ['--max-columns', 'maxColumns'],
@@ -148,7 +159,7 @@ function parseArguments(argv) {
         throw new Error(`${argument} requires an integer of at least ${floor}`)
       }
       options.limits[LIMIT_FLAGS.get(argument)] = Number(raw)
-    } else throw new Error(`Unknown option "${argument}"`)
+    } else throw new Error(`Unknown option "${quote(argument)}"`)
   }
 
   if (options.input === null) throw new Error('--input is required')
@@ -189,14 +200,14 @@ async function resolveOutput(outPath, inputPath, overwrite) {
   // real directory, because there is nothing to resolve.
   const existingReal = await realpath(target).catch(() => null)
   const directory = await realpath(dirname(target)).catch(() => null)
-  if (directory === null) throw new Error(`--out directory does not exist: ${dirname(outPath)}`)
+  if (directory === null) throw new Error(`--out directory does not exist: ${quote(dirname(outPath))}`)
   const targetReal = existingReal ?? join(directory, basename(target))
   const identical = existingReal !== null && inputReal !== null && (await sameFile(existingReal, inputReal))
   if (inputReal !== null && (targetReal === inputReal || identical)) {
     throw new Error('--out must not be the input file; this tool never rewrites what it profiles')
   }
   if (existingReal !== null && !overwrite) {
-    throw new Error(`--out already exists: ${outPath} (pass --overwrite to replace it)`)
+    throw new Error(`--out already exists: ${quote(outPath)} (pass --overwrite to replace it)`)
   }
   return targetReal
 }
@@ -242,7 +253,7 @@ async function main(argv) {
       await writeFile(outTarget, json)
     } catch (error) {
       writeFailed = true
-      process.stderr.write(`The profile could not be written to --out: ${error.code ?? error.message}\n`)
+      process.stderr.write(`The profile could not be written to --out: ${quote(error.code ?? error.message)}\n`)
     }
   }
 

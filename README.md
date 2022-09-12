@@ -164,7 +164,7 @@ started would be worse.
   defaulting to anything. Because declarations that agree with each other can be edited together,
   every severity that decides a verdict is pinned by running the binary and asserting the exit code.
 - **Every untrusted string reaching output is sanitised** — column names, JSON keys, file labels,
-  messages and evidence, not only `evidence`. C0, DEL, the C1 range (`U+0085` NEL and `U+009B` CSI
+  messages, evidence and the arguments quoted back in a CLI diagnostic, not only `evidence`. C0, DEL, the C1 range (`U+0085` NEL and `U+009B` CSI
   included), `U+2028`, `U+2029` and the bidi overrides are removed, so nothing read can forge a
   report line or reverse one.
 - **Output is deterministic.** No wall clock in the output, no locale, no `localeCompare`, no
