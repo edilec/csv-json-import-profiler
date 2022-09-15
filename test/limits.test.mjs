@@ -266,3 +266,27 @@ test('a limit that is not an integer, or below its floor, is refused', async () 
   await assert.rejects(() => profileText('a\n1\n', csv({ limits: { maxRowBytes: 0 } })), /at least 1/)
   await assert.rejects(() => profileText('a\n1\n', csv({ limits: { maxMillis: -1 } })), /at least 0/)
 })
+
+test('a header of exactly maxRowBytes is profiled; one byte more stops the run', async () => {
+  /*
+   * The header row is bounded at its own site, separate from the record path,
+   * and was pinned only from outside the limit. A bound tested from one side
+   * can be moved by one byte without anything failing, so both sides are
+   * asserted here: the widest header that fits is profiled normally, and one
+   * byte past it stops the run rather than inventing column names.
+   */
+  const header = `${'a'.repeat(8)},${'b'.repeat(8)}`
+  const limit = Buffer.byteLength(header)
+
+  const fits = await profileText(`${header}\n1,2\n`, csv({ limits: { maxRowBytes: limit } }))
+  assert.equal(fits.status, 'pass')
+  assert.equal(fits.findings.some((item) => item.ruleId === 'row-too-large'), false)
+  assert.equal(fits.summary.checked, 1)
+
+  const over = await profileText(`${header}c\n1,2\n`, csv({ limits: { maxRowBytes: limit } }))
+  assert.equal(over.status, 'incomplete')
+  assert.equal(over.summary.checked, 0)
+  const finding = over.findings.find((item) => item.ruleId === 'row-too-large')
+  assert.ok(finding, 'the oversized header must be reported')
+  assert.match(finding.message, /header row/)
+})

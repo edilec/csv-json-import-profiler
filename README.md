@@ -153,13 +153,14 @@ started would be worse.
 - **Every limit is enforced where it is documented**, tested on the bound itself and one step past
   it — one byte, one column, one level — and exceeding one is an explicit finding with an
   `incomplete` report, never a silent truncation.
-- **Every `incomplete` flag that can change an answer is load bearing.** Eight of the eleven were
+- **Every `incomplete` flag that can change an answer is load bearing.** Eight of the twelve were
   deleted in turn and a test failed for each, on inputs that profiled records first so the empty-run
-  guard was not what caught it. The other three sit on paths that end with `checked === 0`, where
+  guard was not what caught it. The other four sit on paths that end with `checked === 0`, where
   `finalize()` reaches the same verdict anyway: an input refused for escaping the root, an input
-  that could not be opened, and a read that fails part way through. The last of those stops a failed
-  read from being reported as a verdict about the input once records have been profiled — a state no
-  test can reach on a regular file, so it is kept rather than pinned.
+  that could not be opened, a read that fails part way through, and a header row past
+  `maxRowBytes`, which stops profiling before any record exists. Each was measured rather than
+  assumed — turning the header flag off still reports `incomplete` and exits 2. They are kept as
+  defence in depth, not pinned, because no input can make their removal observable.
 - **Every finding's severity comes from one frozen table.** An unknown rule id throws rather than
   defaulting to anything. Because declarations that agree with each other can be edited together,
   every severity that decides a verdict is pinned by running the binary and asserting the exit code.
