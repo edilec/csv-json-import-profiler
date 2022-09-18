@@ -585,6 +585,7 @@ export {
   excerpt,
   hasBom,
   mask,
+  parseFailureDetail,
   sanitize,
   utf8Length,
 } from './text.mjs'

@@ -143,6 +143,8 @@ started would be worse.
 
 - **No value from the input appears in the report.** Values written into a fixture are searched for
   in the report produced from it, in both renderings.
+  That includes the error path: a record that does not parse is named and located, never quoted,
+  because V8 puts the record itself inside its own parse error message.
 - **A mixed column is reported, never coerced**, and both type counts survive into the profile.
 - **A quoted multiline field is one record with one value**, and a record whose field count differs
   from the header is reported and kept out of the column statistics, because its values sit under the

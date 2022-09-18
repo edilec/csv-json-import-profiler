@@ -21,6 +21,15 @@ an existing file without `--overwrite`.
 letter is `A` or `a`. `alice@example.com` is reported as `aaaaa@aaaaaaa.aaa` — enough to see a mail
 address where a number was expected, not enough to know whose.
 
+That holds on the error path too, which is where it is easiest to lose. A record that does not
+parse is reported by `record-not-json`, and V8 quotes the record back inside its own error message:
+`Unexpected token 'A', "AKIAIOSFODNN7EXAMPLE" is not valid JSON` is a short record in full, and a
+longer one through a window around the offence. Masking never sees that text, and excerpting does
+not bound it either, because an excerpt trims from the end while the quoted span sits at the front.
+Only the useful half is kept — the position, line and column where V8 reports them, and the
+offending token where it does not — so the record that could not be validated is also the record
+that is not reproduced.
+
 ## What is read
 
 The format is declared with `--format`, or inferred from the extension. It is never guessed from

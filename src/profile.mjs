@@ -8,7 +8,7 @@
  */
 
 import { inspectJsonText, pointerSegment } from './json.mjs'
-import { byCodeUnit, excerpt, mask, utf8Length } from './text.mjs'
+import { byCodeUnit, excerpt, mask, parseFailureDetail, utf8Length } from './text.mjs'
 import {
   classifyCsvValue,
   classifyJsonValue,
@@ -428,7 +428,7 @@ export class Profiler {
         record: ordinal,
         line: record.line,
         ruleId: 'record-not-json',
-        message: `Record ${ordinal} is not valid JSON, so nothing is known about it: ${error.message}`,
+        message: `Record ${ordinal} is not valid JSON, so nothing is known about it: ${parseFailureDetail(error)}.`,
         evidence: mask(record.text),
         suggestion: 'Fix the record at the reported line; a profile that guessed at its shape would be worse than this gap.',
       })
