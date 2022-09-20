@@ -7,7 +7,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "lint": "node --check src/index.mjs && node --check src/csv.mjs && node --check src/json.mjs && node --check src/profile.mjs && node --check src/text.mjs && node --check src/values.mjs && node --check bin/csv-json-import-profiler.mjs && node --check test/csv.test.mjs && node --check test/json.test.mjs && node --check test/values.test.mjs && node --check test/profile.test.mjs && node --check test/limits.test.mjs && node --check test/redaction.test.mjs && node --check test/parse-leak.test.mjs && node --check test/determinism.test.mjs && node --check test/severity-table.test.mjs && node --check test/severity-exit.test.mjs && node --check test/cli.test.mjs && node --check test/read-only.test.mjs",
+    "lint": "node --check src/index.mjs && node --check src/csv.mjs && node --check src/json.mjs && node --check src/profile.mjs && node --check src/text.mjs && node --check src/values.mjs && node --check bin/csv-json-import-profiler.mjs && node --check test/csv.test.mjs && node --check test/json.test.mjs && node --check test/values.test.mjs && node --check test/profile.test.mjs && node --check test/limits.test.mjs && node --check test/redaction.test.mjs && node --check test/parse-leak.test.mjs && node --check test/parse-failure.test.mjs && node --check test/determinism.test.mjs && node --check test/severity-table.test.mjs && node --check test/severity-exit.test.mjs && node --check test/cli.test.mjs && node --check test/read-only.test.mjs",
     "test": "node --test",
     "test:coverage": "node --test --experimental-test-coverage --test-coverage-include=src/**",
     "example": "node bin/csv-json-import-profiler.mjs --input examples/orders-clean.csv",
