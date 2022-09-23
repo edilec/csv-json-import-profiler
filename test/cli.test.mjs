@@ -116,9 +116,13 @@ test('a control character in an argument cannot forge a line on stderr', async (
   assert.equal(unknown.stderr.includes('\u2028'), false, 'no line separator reaches stderr')
   assert.equal(unknown.stderr.includes('tail'), true, 'the argument is still quoted back, without its controls')
 
-  const missing = await run(['--input', 'examples/orders-clean.csv', '--out', `/nowhere${escape}/profile.json`])
+  const missing = await run([
+    '--input', 'examples/orders-clean.csv',
+    '--out', `/nowhere${escape}/profile.json`,
+    '--out-root', '/',
+  ])
   assert.equal(missing.code, 2)
-  assert.match(missing.stderr, /--out directory does not exist/)
+  assert.match(missing.stderr, /--out names a directory that does not exist/)
   assert.equal(missing.stderr.includes('\u001b'), false, 'no escape character reaches stderr')
 })
 
@@ -185,7 +189,7 @@ test('--out writes the JSON report to a separate destination', async () => {
     const output = join(base, 'profile.json')
     await writeFile(input, 'id,amount\n1,10\n2,20\n')
 
-    const { code, stdout } = await run(['--input', input, '--out', output])
+    const { code, stdout } = await run(['--input', input, '--out', output, '--out-root', base])
     assert.equal(code, 0)
     assert.match(stdout, /status pass/, 'stdout still carries the human summary')
 
@@ -201,12 +205,18 @@ test('--out refuses to be the input, even by way of a symlink', async () => {
     await writeFile(input, 'id,amount\n1,10\n')
     await symlink(input, join(base, 'alias.csv'))
 
-    for (const target of [input, join(base, 'alias.csv')]) {
-      const { code, stdout, stderr } = await run(['--input', input, '--out', target])
-      assert.equal(code, 2)
-      assert.equal(stdout, '')
-      assert.match(stderr, /never rewrites what it profiles/)
-    }
+    // The input under its own name is refused by identity; the symlink is
+    // refused a step earlier, on sight, because resolving it is the dangerous
+    // act. Two different refusals, one outcome: the input is not written to.
+    const direct = await run(['--input', input, '--out', input, '--out-root', base])
+    assert.equal(direct.code, 2)
+    assert.equal(direct.stdout, '')
+    assert.match(direct.stderr, /same file as an input/)
+
+    const viaLink = await run(['--input', input, '--out', join(base, 'alias.csv'), '--out-root', base])
+    assert.equal(viaLink.code, 2)
+    assert.equal(viaLink.stdout, '')
+    assert.match(viaLink.stderr, /symbolic link/)
     assert.equal(await readFile(input, 'utf8'), 'id,amount\n1,10\n', 'the input is exactly as it was')
   })
 })
@@ -229,10 +239,15 @@ test('--out refuses to be the input by way of a hard link, which has no target t
     // preventing it. Both names are tried as the input, because neither of them
     // is the "real" one.
     for (const [subject, destination] of [[input, alias], [alias, input]]) {
-      const { code, stdout, stderr } = await run(['--input', subject, '--out', destination, '--overwrite'])
+      const { code, stdout, stderr } = await run([
+        '--input', subject,
+        '--out', destination,
+        '--out-root', base,
+        '--overwrite',
+      ])
       assert.equal(code, 2)
       assert.equal(stdout, '', 'a refused destination is a configuration error, so stdout stays empty')
-      assert.match(stderr, /never rewrites what it profiles/)
+      assert.match(stderr, /same file as an input/)
       assert.equal(await readFile(input, 'utf8'), content, 'the input is exactly as it was')
       assert.equal(await readFile(alias, 'utf8'), content, 'and so is the other name for the same file')
     }
@@ -246,13 +261,13 @@ test('--out refuses to replace an existing file unless told to', async () => {
     await writeFile(input, 'id,amount\n1,10\n')
     await writeFile(output, 'keep me')
 
-    const refused = await run(['--input', input, '--out', output])
+    const refused = await run(['--input', input, '--out', output, '--out-root', base])
     assert.equal(refused.code, 2)
     assert.equal(refused.stdout, '')
     assert.match(refused.stderr, /already exists/)
     assert.equal(await readFile(output, 'utf8'), 'keep me')
 
-    const allowed = await run(['--input', input, '--out', output, '--overwrite'])
+    const allowed = await run(['--input', input, '--out', output, '--out-root', base, '--overwrite'])
     assert.equal(allowed.code, 0)
     assert.equal(JSON.parse(await readFile(output, 'utf8')).tool, 'csv-json-import-profiler')
   })
@@ -271,7 +286,11 @@ test('a profile that cannot be written to --out still reaches stdout, and the ru
     await chmod(locked, 0o500)
 
     try {
-      const { code, stdout, stderr } = await run(['--input', input, '--out', join(locked, 'profile.json')])
+      const { code, stdout, stderr } = await run([
+        '--input', input,
+        '--out', join(locked, 'profile.json'),
+        '--out-root', base,
+      ])
       assert.equal(code, 2)
       assert.match(stdout, /status pass/, 'the profile still reaches stdout')
       assert.match(stderr, /The profile could not be written to --out/)

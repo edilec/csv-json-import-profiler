@@ -18,10 +18,20 @@ the thing that will stop the load at three in the morning.
 
 **Nothing is rewritten.** The input is opened read-only. There is no auto-fix, no normalisation pass
 and no write path anywhere in `src/` — the library imports `createReadStream`, `realpath` and `stat`
-from the filesystem and nothing else. A profile goes to stdout, or to `--out`, which refuses to be
-the input file (compared on the inode, so neither a symlink alias nor a hard link — which has no
-target to resolve — can launder one into the other) and refuses to replace an existing file without
-`--overwrite`.
+from the filesystem and nothing else (plus `lstat`, which reads a directory entry and opens nothing).
+A profile goes to stdout, or to `--out`, and `--out` is checked before the input is opened:
+
+| Refused | Why the obvious guard misses it |
+| --- | --- |
+| A **symbolic link** at `--out` | `realpath` on the destination *resolves* the link, and resolving is the dangerous act: the write then goes wherever the link points. Refused on sight with `lstat`, whether or not its target exists yet — a dangling link creates the profile outside the tree instead of destroying something in it. |
+| A **symlinked directory** on the way to it | A lexical prefix check passes for `root/link/out.json` where `link` leaves the root. The parent is resolved, then compared. |
+| A path resolving outside `--out-root` | `--out-root` defaults to the working directory and must be named explicitly to widen it. |
+| The **input file**, under any name | Identity is the inode: a hard link is a second name for one file and resolves to a real path of its own, so no path comparison can see it. |
+| A directory, or a path whose directory is missing | A destination is a file, at a path that already reads as somewhere. |
+
+An existing regular file is refused as well unless `--overwrite` says to replace it. That is a
+separate question from safety and is asked afterwards: the guard establishes that the destination is
+the file you named, and `--overwrite` says whether you meant to lose it.
 
 **No value reaches the report.** An import file is where personal data lives. Every sample is a
 *redacted reference*: a record number, and a masked shape in which every digit is `9` and every

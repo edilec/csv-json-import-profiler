@@ -103,7 +103,7 @@ test('the --out file does not carry the record either', async () => {
     const out = join(base, 'profile.json')
     await writeFile(input, `{"id":1}\n${CANARY}\n`)
 
-    await run(['--input', input, '--json', '--out', out])
+    await run(['--input', input, '--json', '--out', out, '--out-root', dirname(out)])
     assertNoCanary(await readFile(out, 'utf8'), 'the --out report')
   })
 })

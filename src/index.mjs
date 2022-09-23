@@ -32,6 +32,8 @@ import { JsonRecordReader } from './json.mjs'
 import { Profiler, createFinding, sortFindings } from './profile.mjs'
 import { createUtf8Decoder, excerpt, hasBom, sanitize } from './text.mjs'
 
+export { DestinationError, assertWritableDestination } from './write-guard.mjs'
+
 export const TOOL_ID = 'csv-json-import-profiler'
 export const REPORT_SCHEMA_VERSION = '1'
 

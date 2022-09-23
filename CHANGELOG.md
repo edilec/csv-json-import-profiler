@@ -4,7 +4,29 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+### Fixed
+
+- `--out` accepted a destination that destroyed a file the tool was never asked
+  to touch. The check resolved the destination and compared the result with the
+  input, which caught a symbolic link pointing AT the input and a hard link to
+  it, and missed the case that actually loses data: a symbolic link pointing
+  anywhere else. `realpath` resolved it, the resolved path was not the input,
+  and the write went through the link. Measured with `--overwrite` -- the flag
+  whose whole purpose is to say "replace that file" -- a 9-byte file outside
+  the tree became a 3460-byte profile at exit 0. A link whose target did not
+  exist yet needed no `--overwrite` at all: the profile was created outside the
+  tree. A symlinked parent directory did the same thing one level up.
+  `assertWritableDestination` now refuses all three before the input is opened,
+  and the hard-link identity comparison lives inside the same guard.
+  `test/destination.test.mjs` has one case per hole and one per allowed shape.
+
 ### Added
+
+- `--out-root`, declaring the tree `--out` may resolve inside. It defaults to
+  the working directory and has no meaning without `--out`; `--overwrite`
+  without `--out` is now a usage error too, rather than a flag with no effect;
+- `assertWritableDestination` and `DestinationError`, exported for a caller
+  writing its own destination logic;
 
 - a streaming RFC 4180 CSV reader: a quoted field may contain the delimiter, may
   contain CR, LF or CRLF kept literally, and `""` inside quotes is one literal

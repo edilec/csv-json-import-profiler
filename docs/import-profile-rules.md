@@ -12,9 +12,12 @@ picked the popular type would describe a file nobody has, and the mixed column i
 
 **Nothing is rewritten.** The input is opened read-only. There is no auto-fix, no normalisation pass
 and no write path anywhere in `src/` — the module imports no write API at all. A profile goes to
-stdout, or to `--out`, which refuses to be the input file — identity is the inode, because a hard
-link is a second name for one file and resolves to a real path of its own — and refuses to replace
-an existing file without `--overwrite`.
+stdout, or to `--out`, and `--out` is refused when it is a symbolic link (resolving it is the
+dangerous act, so it is refused on sight with `lstat`, dangling or not), when a symlinked directory
+lies on the way to it, when it resolves outside `--out-root` (default: the working directory), when
+it is the input file under any name — identity is the inode, because a hard link is a second name
+for one file and resolves to a real path of its own — and when it is a directory or its directory
+does not exist. An existing regular file is refused as well without `--overwrite`.
 
 **No value reaches the report.** An import file is where personal data lives. Every sample is a
 *redacted reference*: a record number, and a masked shape in which every digit is `9` and every

@@ -1,9 +1,8 @@
 #!/usr/bin/env node
 
-import { realpath, stat, writeFile } from 'node:fs/promises'
-import { basename, dirname, join, resolve } from 'node:path'
+import { lstat, writeFile } from 'node:fs/promises'
 
-import { excerpt, formatReport, profileFile } from '../src/index.mjs'
+import { DestinationError, assertWritableDestination, excerpt, formatReport, profileFile } from '../src/index.mjs'
 
 const HELP = `csv-json-import-profiler
 
@@ -34,6 +33,8 @@ Options:
   --json                  Emit the machine-readable report on stdout
   --out FILE              Also write the JSON report to FILE. Never the input,
                           and never over an existing file without --overwrite
+  --out-root DIR          Tree --out must resolve inside (default: the working
+                          directory)
   --overwrite             Allow --out to replace an existing file
   -h, --help              Show this help
 
@@ -49,6 +50,11 @@ Limits (exceeding one is a finding and an incomplete report, never a silent cut)
 Every option that carries a value may be given only once: a repeated flag is a
 configuration error, not a silent last-wins. An unknown option is refused, so a
 one-character typo cannot quietly turn a real failure into a green run.
+
+--out is checked before the input is opened. A symbolic link at the destination,
+a symlinked directory on the way to it, a path that resolves outside --out-root
+and a hard link to the input are each refused: every one of them writes the
+profile over a file this tool was never asked to touch.
 
 Exit codes:
   0  the input profiled cleanly
@@ -95,6 +101,7 @@ function parseArguments(argv) {
     nullTokens: null,
     nullRatio: null,
     out: null,
+    outRoot: null,
     overwrite: false,
     json: false,
     limits: {},
@@ -134,6 +141,9 @@ function parseArguments(argv) {
     } else if (argument === '--out') {
       once('--out')
       options.out = takeValue('--out')
+    } else if (argument === '--out-root') {
+      once('--out-root')
+      options.outRoot = takeValue('--out-root')
     } else if (argument === '--format') {
       once('--format')
       options.format = takeValue('--format')
@@ -163,53 +173,55 @@ function parseArguments(argv) {
   }
 
   if (options.input === null) throw new Error('--input is required')
+  if (options.outRoot !== null && options.out === null) {
+    throw new Error('--out-root has no meaning without --out')
+  }
+  if (options.overwrite && options.out === null) {
+    throw new Error('--overwrite has no meaning without --out')
+  }
   return options
-}
-
-/**
- * Whether two existing paths name the same file.
- *
- * Identity is the inode, not the resolved path. `realpath` answers this for a
- * symbolic link, which has a target to resolve, and for nothing else: a hard
- * link has no target, so two names for one inode resolve to two different real
- * paths. A path comparison then says "different file" and the write destroys
- * the input. Hard links are ordinary -- `cp -l`, package stores, backup trees
- * -- so the destination is compared by `dev` and `ino`.
- */
-async function sameFile(left, right) {
-  const [one, other] = await Promise.all([stat(left).catch(() => null), stat(right).catch(() => null)])
-  if (one === null || other === null) return false
-  return one.dev === other.dev && one.ino === other.ino
 }
 
 /**
  * Decide where a profile may be written.
  *
- * Two refusals, both about not destroying the subject of the run: the profile
- * never goes to the input itself, compared on the inode so that neither a
- * symbolic link nor a hard link can launder one into the other, and it never
- * replaces an existing file unless the caller said so. A profiler that
- * overwrote the export it was asked to describe would be the worst possible bug
- * in a tool like this.
+ * The first version of this function resolved the destination and compared the
+ * result with the input. That caught a symbolic link pointing AT the input and
+ * a hard link to it, and missed the case that actually destroys files: a
+ * symbolic link pointing anywhere else. `realpath` resolved it, the resolved
+ * path was not the input, and `writeFile` went through the link. Measured
+ * here, with `--overwrite`: a 9-byte file outside the tree became a 3460-byte
+ * profile at exit 0. Without an existing target to resolve -- a link whose
+ * target does not exist yet -- the profile was created out there instead, and
+ * `--overwrite` was not even needed. A symlinked parent directory did the same
+ * thing one level up.
+ *
+ * `assertWritableDestination` carries the reasoning for all three holes, and
+ * the identity comparison that answers the hard link lives inside it now: the
+ * inode is the only thing two names for one file share.
+ *
+ * `--overwrite` is a separate question and is asked afterwards. The guard has
+ * already established that the destination is the file the caller named; this
+ * refuses replacing a file the caller named but did not mean to lose.
  */
-async function resolveOutput(outPath, inputPath, overwrite) {
-  const target = resolve(outPath)
-  const inputReal = await realpath(resolve(inputPath)).catch(() => null)
-  // An existing target is compared by its own real path, so a symlink pointing
-  // at the input is caught; one that does not exist yet is composed from its
-  // real directory, because there is nothing to resolve.
-  const existingReal = await realpath(target).catch(() => null)
-  const directory = await realpath(dirname(target)).catch(() => null)
-  if (directory === null) throw new Error(`--out directory does not exist: ${quote(dirname(outPath))}`)
-  const targetReal = existingReal ?? join(directory, basename(target))
-  const identical = existingReal !== null && inputReal !== null && (await sameFile(existingReal, inputReal))
-  if (inputReal !== null && (targetReal === inputReal || identical)) {
-    throw new Error('--out must not be the input file; this tool never rewrites what it profiles')
+async function resolveOutput(outPath, inputPath, overwrite, outRoot) {
+  let target
+  try {
+    target = await assertWritableDestination(outPath, {
+      inputs: [inputPath],
+      root: outRoot,
+      label: '--out',
+      rootLabel: '--out-root',
+    })
+  } catch (error) {
+    if (!(error instanceof DestinationError)) throw error
+    throw new Error(error.message)
   }
-  if (existingReal !== null && !overwrite) {
+  const exists = await lstat(target).then(() => true, () => false)
+  if (exists && !overwrite) {
     throw new Error(`--out already exists: ${quote(outPath)} (pass --overwrite to replace it)`)
   }
-  return targetReal
+  return target
 }
 
 async function main(argv) {
@@ -218,7 +230,12 @@ async function main(argv) {
   try {
     options = parseArguments(argv)
     if (!options.help && options.out !== null) {
-      outTarget = await resolveOutput(options.out, options.input, options.overwrite)
+      outTarget = await resolveOutput(
+        options.out,
+        options.input,
+        options.overwrite,
+        options.outRoot ?? process.cwd(),
+      )
     }
   } catch (error) {
     process.stderr.write(`${error.message}\n\n${HELP}`)

@@ -80,7 +80,12 @@ for (const [label, name, content] of INPUTS) {
       await writeFile(target, content)
       const before = await fingerprint(target)
 
-      const { code } = await run(['--input', target, '--out', join(base, 'profile.json'), '--json'])
+      const { code } = await run([
+        '--input', target,
+        '--out', join(base, 'profile.json'),
+        '--out-root', base,
+        '--json',
+      ])
 
       assert.deepEqual(await fingerprint(target), before, 'the input changed during a profile run')
       // The profile went somewhere else entirely, and the exit code is the one
@@ -126,7 +131,10 @@ test('the example inputs shipped with this package are unchanged by npm run exam
 test('the library has no write path at all', async () => {
   // Two questions, because either alone is answerable by accident: what does
   // src import from the filesystem, and does any line of it call a writer?
-  const readOnly = new Set(['createReadStream', 'realpath', 'stat'])
+  // `lstat` is how the write guard refuses a symbolic link at the destination
+  // without resolving it, which is the one thing `realpath` cannot do. It reads
+  // a directory entry and opens nothing.
+  const readOnly = new Set(['createReadStream', 'lstat', 'realpath', 'stat'])
   const writers = [
     'writeFile(',
     'writeFileSync(',
