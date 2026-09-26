@@ -1,0 +1,6 @@
+[
+  { "sku": "BOLT-0117", "title": "Hex bolt M8", "price": 1.25, "in_stock": true, "listed_on": "2026-01-04" },
+  { "sku": "BOLT-0118", "title": "Hex bolt M10", "price": "1.75", "in_stock": true, "listed_on": "2026-01-04" },
+  { "sku": "CRAN-0042", "title": "Cable crimp", "price": 99.99, "in_stock": false, "sku": "CRAN-0043" },
+  { "sku": "ACME-0001", "title": "Bench vice", "price": 74.00, "in_stock": true, "listed_on": "2026-01-06", "warehouse": "B" }
+]

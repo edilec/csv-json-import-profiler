@@ -1,0 +1,8 @@
+order_id,placed_on,customer_ref,quantity,unit_price,notes
+1001,2026-01-04,ACME-0001,2,10.50,"Leave at the gate, ring the bell"
+1002,2026-01-04,ACME-0002,1,4.00,"Two lines:
+the second one is here"
+1003,2026-01-05,BOLT-0117,12,1.25,"He said ""bring the small box"""
+1004,2026-01-05,BOLT-0118,3,7.80,
+1005,2026-01-06,CRAN-0042,1,99.99,"Fragile; delivery window 9-11"
+1006,2026-01-06,CRAN-0043,4,3.15,"Semicolons; commas, and ""quotes"" together"
