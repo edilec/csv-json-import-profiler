@@ -41,8 +41,10 @@ address where a number was expected, not enough to know whose.
 ## Install
 
 ```sh
-npm install csv-json-import-profiler
+npm install github:edilec/csv-json-import-profiler
 ```
+
+This installs the public GitHub source; `csv-json-import-profiler` is not published to npm.
 
 Or run it from a checkout with no install at all:
 
@@ -53,10 +55,10 @@ node bin/csv-json-import-profiler.mjs --input examples/orders-clean.csv
 ## Use
 
 ```sh
-csv-json-import-profiler --input orders.csv
-csv-json-import-profiler --input orders.csv --json
-csv-json-import-profiler --input export.txt --format csv --delimiter semicolon
-csv-json-import-profiler --input catalog.json --out profile.json --max-records 500
+npx csv-json-import-profiler --input orders.csv
+npx csv-json-import-profiler --input orders.csv --json
+npx csv-json-import-profiler --input export.txt --format csv --delimiter semicolon
+npx csv-json-import-profiler --input catalog.json --out profile.json --max-records 500
 ```
 
 The human summary goes to stdout; `--json` replaces it with the machine-readable report.
